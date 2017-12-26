@@ -28,6 +28,13 @@ class TwitterModel(object):
     def __ne__(self, other):
         return not self.__eq__(other)
 
+    def __hash__(self):
+        if hasattr(self, 'id'):
+            return hash(self.id)
+        else:
+            raise TypeError('unhashable type: {} (no id attribute)'
+                            .format(type(self)))
+
     def AsJsonString(self):
         """ Returns the TwitterModel as a JSON string based on key/value
         pairs returned from the AsDict() method. """
@@ -275,12 +282,12 @@ class UserStatus(TwitterModel):
     """ A class representing the UserStatus structure. This is an abbreviated
     form of the twitter.User object. """
 
-    connections = {'following': False,
-                   'followed_by': False,
-                   'following_received': False,
-                   'following_requested': False,
-                   'blocking': False,
-                   'muting': False}
+    _connections = {'following': False,
+                    'followed_by': False,
+                    'following_received': False,
+                    'following_requested': False,
+                    'blocking': False,
+                    'muting': False}
 
     def __init__(self, **kwargs):
         self.param_defaults = {
@@ -300,9 +307,18 @@ class UserStatus(TwitterModel):
             setattr(self, param, kwargs.get(param, default))
 
         if 'connections' in kwargs:
-            for param in self.connections:
+            for param in self._connections:
                 if param in kwargs['connections']:
                     setattr(self, param, True)
+
+    @property
+    def connections(self):
+        return {'following': self.following,
+                'followed_by': self.followed_by,
+                'following_received': self.following_received,
+                'following_requested': self.following_requested,
+                'blocking': self.blocking,
+                'muting': self.muting}
 
     def __repr__(self):
         connections = [param for param in self.connections if getattr(self, param)]
@@ -396,6 +412,9 @@ class Status(TwitterModel):
             'media': None,
             'place': None,
             'possibly_sensitive': None,
+            'quoted_status': None,
+            'quoted_status_id': None,
+            'quoted_status_id_str': None,
             'retweet_count': None,
             'retweeted': None,
             'retweeted_status': None,
@@ -438,17 +457,21 @@ class Status(TwitterModel):
             string: A string representation of this twitter.Status instance with
             the ID of status, username and datetime.
         """
+        if self.tweet_mode == 'extended':
+            text = self.full_text
+        else:
+            text = self.text
         if self.user:
             return "Status(ID={0}, ScreenName={1}, Created={2}, Text={3!r})".format(
                 self.id,
                 self.user.screen_name,
                 self.created_at,
-                self.text)
+                text)
         else:
             return u"Status(ID={0}, Created={1}, Text={2!r})".format(
                 self.id,
                 self.created_at,
-                self.text)
+                text)
 
     @classmethod
     def NewFromJsonDict(cls, data, **kwargs):
@@ -463,6 +486,7 @@ class Status(TwitterModel):
         current_user_retweet = None
         hashtags = None
         media = None
+        quoted_status = None
         retweeted_status = None
         urls = None
         user = None
@@ -474,6 +498,8 @@ class Status(TwitterModel):
             retweeted_status = Status.NewFromJsonDict(data['retweeted_status'])
         if 'current_user_retweet' in data:
             current_user_retweet = data['current_user_retweet']['id']
+        if 'quoted_status' in data:
+            quoted_status = Status.NewFromJsonDict(data.get('quoted_status'))
 
         if 'entities' in data:
             if 'urls' in data['entities']:
@@ -494,6 +520,7 @@ class Status(TwitterModel):
                                                current_user_retweet=current_user_retweet,
                                                hashtags=hashtags,
                                                media=media,
+                                               quoted_status=quoted_status,
                                                retweeted_status=retweeted_status,
                                                urls=urls,
                                                user=user,
